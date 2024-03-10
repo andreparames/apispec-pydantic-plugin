@@ -1,5 +1,5 @@
 from contextlib import suppress
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from apispec import APISpec, BasePlugin
 from apispec.exceptions import DuplicateComponentNameError
@@ -10,19 +10,29 @@ from apispec_pydantic_plugin.resolver import SchemaResolver
 
 if TYPE_CHECKING:
     from apispec_pydantic_plugin.models import BaseModelAlias
+class OpenAPIConverter:
+    def __init__(self, openapi_version, schema_name_resolver, spec) -> None:
+        self.openapi_version = openapi_version
+        self.schema_name_resolver = schema_name_resolver
+        self.spec = spec
+
+    def schema2parameters(schema, **options):
+        raise Exception(schema, options)
 
 
 class PydanticPlugin(BasePlugin):
     """APISpec plugin for translating pydantic models to OpenAPI/JSONSchema format."""
 
-    spec: APISpec | None
-    openapi_version: Version | None
-    resolver: SchemaResolver | None
+    spec: Optional[APISpec]
+    openapi_version: Optional[Version]
+    resolver: Optional[SchemaResolver]
+    converter : Optional[OpenAPIConverter]
 
-    def __init__(self) -> None:
+    def __init__(self, schema_name_resolver) -> None:
         self.spec = None
+        self.schema_name_resolver = schema_name_resolver
         self.openapi_version = None
-
+        self.converter = None
         self.resolver = None
 
     def init_spec(self, spec: APISpec) -> None:
@@ -33,6 +43,11 @@ class PydanticPlugin(BasePlugin):
         super().init_spec(spec=spec)
         self.spec = spec
         self.resolver = SchemaResolver(spec=self.spec)
+        self.converter = OpenAPIConverter(
+            openapi_version=spec.openapi_version,
+            schema_name_resolver=self.schema_name_resolver,
+            spec=spec,
+        )
 
     def schema_helper(
         self,
@@ -47,7 +62,7 @@ class PydanticPlugin(BasePlugin):
             definition: Schema definition
             kwargs: All additional keyword arguments sent to `APISpec.schema()`
         """
-        model: BaseModelAlias | None = kwargs.pop("model", None)
+        model: Optional[BaseModelAlias] = kwargs.pop("model", None)
         if model:
             schema = model.model_json_schema(
                 ref_template="#/components/schemas/{model}"
@@ -73,7 +88,7 @@ class PydanticPlugin(BasePlugin):
 
     def operation_helper(
         self,
-        path: str | None = None,  # noqa: ARG002
+        path: Optional[str] = None,  # noqa: ARG002
         operations: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
